@@ -12,16 +12,13 @@ WORKDIR /app
 COPY . .
 
 # ==== 5. Устанавливаем зависимости ====
+# Сначала обновляем pip, потом ставим зависимости из requirements.txt
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir aiogram openai ffmpeg-python
-    COPY requirements.txt .
-    RUN pip install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir -r requirements.txt
 
 # ==== 6. Переменные окружения ====
-# Чтобы Railway мог передавать ключи и токен
+# Railway сам подставит их из Settings → Variables
 ENV PYTHONUNBUFFERED=1
-ENV BOT_TOKEN=${BOT_TOKEN}
-ENV OPENAI_API_KEY=${OPENAI_API_KEY}
 
 # ==== 7. Команда запуска ====
 CMD ["python", "speech_to_text_yeah.py"]
