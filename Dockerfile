@@ -14,6 +14,8 @@ COPY . .
 # ==== 5. Устанавливаем зависимости ====
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir aiogram openai ffmpeg-python
+    COPY requirements.txt .
+    RUN pip install --no-cache-dir -r requirements.txt
 
 # ==== 6. Переменные окружения ====
 # Чтобы Railway мог передавать ключи и токен
