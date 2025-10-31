@@ -8,17 +8,18 @@ RUN apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
 # ==== 3. Создаём рабочую директорию ====
 WORKDIR /app
 
-# ==== 4. Копируем файлы проекта ====
-COPY . .
+# ==== 4. Копируем зависимости ====
+COPY requirements.txt .
 
 # ==== 5. Устанавливаем зависимости ====
-# Сначала обновляем pip, потом ставим зависимости из requirements.txt
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# ==== 6. Переменные окружения ====
-# Railway сам подставит их из Settings → Variables
+# ==== 6. Копируем всё остальное ====
+COPY . .
+
+# ==== 7. Настройки среды ====
 ENV PYTHONUNBUFFERED=1
 
-# ==== 7. Команда запуска ====
+# ==== 8. Команда запуска ====
 CMD ["python", "speech_to_text_yeah.py"]
