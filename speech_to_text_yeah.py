@@ -1,6 +1,7 @@
 import os
 import asyncio
 import mimetypes
+import requests
 import ffmpeg
 from aiogram import Bot, Dispatcher, types
 from aiogram.enums import ParseMode
@@ -84,42 +85,68 @@ async def translate_text(text: str, lang: str) -> str:
 async def start(message: types.Message):
     await message.answer(
         "🎥 <b>Привет!</b>\n\n"
-        "Я принимаю любые видео 🎬, аудио 🔊 и документы 📄 — "
-        "превращаю речь в структурированный текст и даже перевожу 🌍"
+        "Я принимаю любые видео 🎬, аудио 🔊 или ссылку 📎 (например WB Disk, Google Drive, Dropbox) — "
+        "и превращаю речь в структурированный текст ✨"
     )
 
-# === Универсальный обработчик файлов ===
+# === Универсальный обработчик ===
 @dp.message()
 async def handle_any_file(message: types.Message):
+    # === 1. Если прислали ссылку ===
+    if message.text and message.text.startswith(("http://", "https://")):
+        await message.answer("📥 Скачиваю файл по ссылке...")
+        try:
+            url = message.text.strip()
+            local_path = f"{TEMP_DIR}/remote_file"
+
+            # --- Скачивание файла ---
+            response = requests.get(url, stream=True, timeout=600)
+            total = 0
+            with open(local_path, "wb") as f:
+                for chunk in response.iter_content(chunk_size=1024 * 1024):
+                    if chunk:
+                        f.write(chunk)
+                        total += len(chunk)
+                        if total > 1024 * 1024 * 500:  # 500 MB лимит
+                            raise Exception("Файл слишком большой (>500 MB).")
+            await process_file(message, local_path)
+            return
+        except Exception as e:
+            await message.answer(f"❌ Не удалось скачать файл по ссылке:\n<code>{e}</code>")
+            return
+
+    # === 2. Если файл отправлен через Telegram ===
     file = message.video or message.audio or message.voice or message.video_note or message.document
     if not file:
-        await message.answer("📂 Отправь мне видео, аудио или документ с записью.")
+        await message.answer("📂 Отправь видео, аудио, документ или ссылку на файл.")
         return
 
     await message.answer("🎧 Обрабатываю файл, подожди немного ⏳")
 
     try:
-        # --- Скачиваем файл ---
         file_info = await bot.get_file(file.file_id)
-        file_name = file.file_name if hasattr(file, "file_name") else f"{file.file_unique_id}"
+        file_name = getattr(file, "file_name", f"{file.file_unique_id}")
         input_path = f"{TEMP_DIR}/{file_name}"
         await bot.download_file(file_info.file_path, input_path)
+        await process_file(message, input_path)
+    except Exception as e:
+        await message.answer(f"❌ Ошибка при скачивании через Telegram:\n<code>{e}</code>")
 
-        # --- Определяем MIME-тип ---
+# === Основная обработка файла ===
+async def process_file(message: types.Message, input_path: str):
+    """Общий процесс: аудио/видео → текст → форматирование"""
+    try:
         mime, _ = mimetypes.guess_type(input_path)
         output_path = f"{input_path}.wav"
 
-        # --- Извлекаем аудио если нужно ---
         if mime and mime.startswith("audio"):
             os.rename(input_path, output_path)
         else:
             await extract_audio(input_path, output_path)
 
-        # --- Распознаём текст ---
         raw_text = await asyncio.to_thread(transcribe_audio, output_path)
         formatted_text = await beautify_text(raw_text)
 
-        # --- Кнопки перевода ---
         kb = InlineKeyboardBuilder()
         kb.button(text="🇷🇺 Русский", callback_data="translate_ru")
         kb.button(text="🇺🇸 English", callback_data="translate_en")
@@ -135,11 +162,11 @@ async def handle_any_file(message: types.Message):
     except Exception as e:
         await message.answer(f"❌ Ошибка при обработке файла:\n<code>{e}</code>")
     finally:
-        for f in [input_path, output_path]:
+        for f in [input_path, f"{input_path}.wav"]:
             if os.path.exists(f):
                 os.remove(f)
 
-# === Переводы ===
+# === Обработка перевода ===
 @dp.callback_query(lambda c: c.data.startswith("translate_"))
 async def translate_callback(callback: types.CallbackQuery):
     lang = callback.data.split("_")[1]
